@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monitoreo de la sismicidad en tiempo casi real</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#0b1220;--panel:#111a2e;--line:#1f2d4a;--tx:#e6edf7;--mut:#8aa0c2;--usgs:#4cc9f0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,Segoe UI,sans-serif;height:100vh;display:grid;grid-template-rows:auto 1fr}
+header{display:flex;gap:16px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:17px;margin:0;font-weight:650}h1 small{display:block;color:var(--mut);font-weight:400;font-size:12px}
+.live{display:flex;align-items:center;gap:8px;color:var(--mut);margin-left:auto}.dot{width:9px;height:9px;border-radius:50%;background:#2ee59d;animation:p 1.6s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 #2ee59d99}100%{box-shadow:0 0 0 10px #0000}}
+select,input{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+main{display:grid;grid-template-columns:1fr 360px;min-height:0}#map{background:#0b1220}
+aside{border-left:1px solid var(--line);overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px;background:var(--panel)}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.k{background:#0d1526;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.k b{font-size:22px;display:block}.k span{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+h3{margin:0;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+#feed{display:flex;flex-direction:column;gap:6px}.ev{display:grid;grid-template-columns:46px 1fr;gap:8px;background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:pointer}
+.ev:hover{border-color:#3a5288}.mg{font-weight:700;font-size:16px;text-align:center;border-radius:6px;padding:4px 0;color:#0b1220}.ev small{color:var(--mut)}
+.chip{font-size:10px;padding:1px 6px;border-radius:9px;border:1px solid}.ok{color:#2ee59d}
+.osm-dark{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.5)}
+[hidden]{display:none!important}#alerta{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:1500;background:#3a1218;border:1px solid #ff4d4d;border-radius:10px;padding:8px 36px 8px 12px;max-width:min(720px,92vw);box-shadow:0 6px 24px #0008}#alerta button{position:absolute;right:6px;top:2px;background:none;border:0;color:#fff;font-size:20px;cursor:pointer}.ci{padding:3px 0;border-bottom:1px solid var(--line)}#bnot{background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer}
+canvas{width:100%;height:110px}.lg{display:flex;gap:10px;flex-wrap:wrap;color:var(--mut);font-size:12px}.lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+.pulse{width:14px;height:14px;border-radius:50%;border:2px solid #fff;animation:r 1.8s ease-out 3}@keyframes r{0%{transform:scale(.4);opacity:1}100%{transform:scale(4);opacity:0}}
+@media(max-width:900px){main{grid-template-columns:1fr;grid-template-rows:55vh auto}}
+</style><style id="tema">
+:root{--bg:#04070d;--panel:#080d16;--line:#14203a;--tx:#e8eef9;--mut:#7b8fb3;--hot:#ff4b3a}
+body{font-family:Bahnschrift,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;background:var(--bg)}
+header{background:#02040a;padding:12px 20px}h1{font-size:18px;letter-spacing:.02em}
+select,input,#bnot{background:#0a1019;border:1px solid var(--line);color:var(--tx);border-radius:3px}
+main{grid-template-columns:1fr 390px}
+aside{background:var(--panel);gap:0;padding:0;scrollbar-color:#1c2c4d var(--panel)}
+aside>div{padding:14px 18px;border-bottom:1px solid var(--line)}
+h3{text-transform:none;letter-spacing:0;font-size:13px;color:var(--tx);font-weight:600;margin-bottom:8px}
+#hero{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;cursor:pointer;border-left:4px solid var(--hot);background:#0b0508}
+#hero .m{font-size:76px;line-height:.9;font-weight:700;font-variant-numeric:tabular-nums}
+#hero .t{font-size:15px;line-height:1.35}#hero .t span{color:var(--mut);font-size:12px}
+.kpis{gap:14px 10px}.k{background:none;border:0;border-left:2px solid var(--hot);border-radius:0;padding:0 0 0 10px}
+.k b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}.k span{text-transform:none;letter-spacing:0;font-size:12px}
+.ev{background:none;border:0;border-left:3px solid var(--line);border-radius:0;padding:5px 8px}.ev:hover{border-left-color:var(--hot);background:#0b1320}
+.mg{border-radius:3px;font-size:18px}
+#ecg{background:#02040a;border:1px solid var(--line);border-radius:0}
+.osm-dark{filter:invert(1) hue-rotate(180deg) brightness(.68) contrast(1.15) saturate(.3)}
+.leaflet-control-layers,.leaflet-bar a,.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0a1019;color:var(--tx);border:1px solid var(--line)}
+.leaflet-bar a:hover{background:#101a2b}.leaflet-control-attribution{background:#02040acc!important;color:var(--mut)!important}
+#alerta{background:#1a0707;border:0;border-left:4px solid var(--hot);border-radius:2px;font-size:15px}
+.ultimo{width:18px;height:18px;border:2px solid var(--hot);border-radius:50%;animation:ur 2s ease-out infinite}
+@keyframes ur{0%{transform:scale(.6);opacity:1}100%{transform:scale(3.2);opacity:0}}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head><body>
+<div id="alerta" hidden></div>
+<header><h1>Monitoreo de la sismicidad en tiempo casi real<small>Colombia · USGS + EMSC · Spark Structured Streaming</small></h1>
+<label>M ≥ <input id="mmin" type="number" value="0" min="0" max="8" step="0.5" style="width:56px"></label>
+<label>Alertar M ≥ <input id="malerta" type="number" value="3.5" min="2" max="8" step="0.5" style="width:56px"></label>
+<button id="bnot" onclick="Notification.requestPermission().then(()=>this.textContent='Avisos activos')">Activar avisos</button>
+<label>Actualizar cada <select id="int"><option>5</option><option selected>15</option><option>30</option><option>60</option></select> s</label>
+<div class="live"><span class="dot"></span><span id="estado">conectando…</span></div></header>
+<main><div id="map"></div><aside>
+<div id="hero"><small>Sin sismos todavía.</small></div>
+<div class="kpis"><div class="k"><b id="k1">–</b><span>Sismos en pantalla</span></div><div class="k"><b id="k2">–</b><span>Magnitud máx.</span></div>
+<div class="k"><b id="k3">–</b><span>Confirmados por 2+ redes</span></div><div class="k"><b id="k4">–</b><span>Último lote Spark</span></div></div>
+<div class="lg"><span><i style="background:#ff4d4d"></i>&lt;33 km</span><span><i style="background:#ffb703"></i>33–70</span><span><i style="background:#4cc9f0"></i>&gt;70 km</span>
+<span style="color:var(--usgs)">USGS</span><span style="color:#c77dff">EMSC</span></div>
+<div><h3 style="display:flex;justify-content:space-between;align-items:center">Pulso sísmico <select id="ecgh" onchange="ecg();actividad(FUS)"><option value="24">24 h</option><option value="72" selected>72 h</option><option value="168">7 d</option></select></h3>
+<canvas id="ecg" width="340" height="90" style="height:90px;background:#0a1020;border-radius:8px"></canvas>
+<div id="ult" style="color:var(--mut);font-size:12px"></div><div id="act" style="font-size:12px;margin-top:2px"></div>
+<div style="color:var(--mut);font-size:11px;margin-top:4px">Solo muestra sismos ya ocurridos.</div></div>
+<div><h3>Zonas más expuestas (estimado)</h3><div id="imp"><small>Sin sismos sobre el umbral.</small></div><div style="color:var(--mut);font-size:11px;margin-top:4px">Estimación referencial (modelo de Bakun). No es alerta temprana.</div></div>
+<div><h3 style="display:flex;justify-content:space-between;align-items:center">¿Quién avisa primero? <button onclick="descargar()" style="background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:11px">CSV</button></h3><div id="lat"><small>Sin datos en vivo todavía.</small></div></div>
+<div><h3>Sismos por día (hora Colombia)</h3><canvas id="cv" width="340" height="110"></canvas></div>
+<div><h3>Últimos sismos</h3><div id="feed"></div></div></aside></main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $=id=>document.getElementById(id), COL=d=>d<33?'#ff4d4d':d<70?'#ffb703':'#4cc9f0', MC=m=>m>=5?'#ff4d4d':m>=4?'#ff9f43':m>=3?'#ffd166':'#7ee0a0';
+const ZONAS={"Nido de Bucaramanga":[6.4,7.2,-73.4,-72.7],"Subducción Pacífico/Chocó":[2,8.5,-79.5,-76.8],"Tolima / Eje Cafetero":[3.3,5.6,-76.3,-74.5],"Nariño / Cauca":[.5,3,-78.8,-76.3],"Piedemonte Llanero":[3,6.5,-74.5,-72]};
+const map=L.map('map',{zoomControl:true}).fitBounds([[-4.3,-79.1],[12.6,-66.8]]);
+const base={"Mapa oscuro":L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',className:'osm-dark',maxZoom:19}).addTo(map),
+ "Satélite":L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri'})};
+const gSis=L.layerGroup().addTo(map), gFal=L.layerGroup().addTo(map), gZon=L.layerGroup(), over={"Sismos":gSis,"Fallas activas (GEM)":gFal,"Zonas sísmicas":gZon};
+const layers=L.control.layers(base,over,{collapsed:false}).addTo(map);
+Object.entries(ZONAS).forEach(([n,z])=>L.rectangle([[z[0],z[2]],[z[1],z[3]]],{color:'#9d4edd',weight:1,fillOpacity:.05}).bindTooltip(n).addTo(gZon));
+const FC={Reverse:'#ff6b35',Normal:'#9d4edd',Dextral:'#f7b801',Sinistral:'#f7b801'};
+fetch('/api/fallas').then(r=>r.json()).then(g=>L.geoJSON(g,{style:f=>({color:FC[f.properties.slip_type]||'#b8c4d9',weight:1.4,opacity:.85}),
+ onEachFeature:(f,l)=>l.bindTooltip(`${f.properties.name}<br><small>${f.properties.slip_type||'tipo no indicado'}</small>`)}).addTo(gFal));
+let evs=[], desde=-1, marks={};
+const PRI={USGS:0,EMSC:1}, FCOL={USGS:'#4cc9f0',EMSC:'#c77dff'}; let FUS=[];
+const rad=a=>a*Math.PI/180, dkm=(a,b)=>12742*Math.asin(Math.sqrt(Math.sin(rad(b.lat-a.lat)/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(rad(b.lon-a.lon)/2)**2));
+function fusionar(v){const G=[];[...v].sort((a,b)=>a.ts<b.ts?-1:1).forEach(e=>{const t=Date.parse(e.ts+'Z');let g=null;
+ for(let i=G.length-1;i>=0&&t-G[i].t<=9e4;i--)if(dkm(G[i].p,e)<=100&&!G[i].todos.some(o=>o.fuente==e.fuente)){g=G[i];break}
+ if(g){g.todos.push(e);if(PRI[e.fuente]<PRI[g.p.fuente])g.p=e}else G.push({t,p:e,todos:[e]})});return G}
+const CIU=[["Bogotá",4.711,-74.072,7900],["Medellín",6.244,-75.581,2600],["Cali",3.452,-76.532,2300],["Barranquilla",10.964,-74.796,1300],["Cartagena",10.391,-75.479,1000],["Cúcuta",7.894,-72.504,800],["Bucaramanga",7.119,-73.123,600],["Villavicencio",4.142,-73.627,550],["Ibagué",4.438,-75.232,550],["Santa Marta",11.241,-74.199,530],["Bello",6.338,-75.558,520],["Pereira",4.814,-75.696,480],["Montería",8.75,-75.881,500],["Valledupar",10.477,-73.253,530],["Manizales",5.07,-75.514,460],["Pasto",1.214,-77.281,400],["Buenaventura",3.883,-77.031,400],["Neiva",2.927,-75.282,370],["Palmira",3.539,-76.303,350],["Popayán",2.444,-76.614,330],["Armenia",4.534,-75.681,310],["Sincelejo",9.304,-75.397,300],["Riohacha",11.544,-72.907,300],["Envigado",6.171,-75.583,240],["Tuluá",4.084,-76.195,220],["Barrancabermeja",7.065,-73.855,200],["Tumaco",1.798,-78.815,200],["Tunja",5.535,-73.367,190],["Apartadó",7.883,-76.626,180],["Florencia",1.614,-75.606,170],["Yopal",5.337,-72.395,170],["Maicao",11.378,-72.239,170],["Turbo",8.093,-76.728,160],["Girardot",4.303,-74.803,150],["Fusagasugá",4.337,-74.364,150],["Ipiales",0.829,-77.644,140],["Facatativá",4.814,-74.357,140],["Cartago",4.746,-75.912,140],["Rionegro",6.155,-75.374,140],["Quibdó",5.692,-76.658,130],["Zipaquirá",5.026,-74.003,130],["Sogamoso",5.714,-72.934,130],["Duitama",5.827,-73.034,120],["Ciénaga",11.007,-74.247,110],["Ocaña",8.237,-73.356,100],["Aguachica",8.308,-73.627,100],["Santander de Quilichao",3.009,-76.484,100],["Arauca",7.085,-70.759,90],["Espinal",4.15,-74.884,80],["Acacías",3.987,-73.759,80],["Pamplona",7.377,-72.648,60],["San Gil",6.556,-73.134,55],["Chaparral",3.724,-75.484,50],["Mocoa",1.149,-76.647,50],["Leticia",-4.215,-69.941,50],["Líbano",4.921,-75.062,40],["Melgar",4.203,-74.641,40],["Mariquita",5.199,-74.896,35],["Guamo",4.03,-74.971,35],["Purificación",3.857,-74.931,30],["Planadas",3.197,-75.646,30],["Honda",5.207,-74.737,25],["Cajamarca",4.44,-75.43,20]]; // [nombre, lat, lon, miles de hab. APROX.]
+const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X'], CMMI=m=>m>=6?'#ff4d4d':m>=5?'#ff9f43':'#ffd166', fmtp=p=>p>=1000?(p/1000).toFixed(1)+' M':p+' mil';
+const mmiA=(M,d)=>1.09*M+5.07-3.69*Math.log10(Math.max(d,5));
+const radioKm=(M,lv,h)=>{const d=Math.pow(10,(1.09*M+5.07-lv)/3.69);return d>h?Math.sqrt(d*d-h*h):0};
+const gImp=L.layerGroup().addTo(map); layers.addOverlay(gImp,'Zona de impacto estimada');
+let SEL=null,manual=false,iniciado=false;const ALERTAS=[];
+function sel(e,man){SEL=e;manual=!!man;gImp.clearLayers();
+ [[4,'#ffd166','Sentido (MMI IV)'],[5,'#ff9f43','Fuerte (MMI V)'],[6,'#ff4d4d','Daño leve posible (MMI VI+)']].forEach(([lv,c,t])=>{const r=radioKm(e.mag,lv,e.prof);
+  if(r>1)L.circle([e.lat,e.lon],{radius:r*1000,color:c,weight:1.5,fillColor:c,fillOpacity:.1,dashArray:'4 4'}).bindTooltip(t+' · ≈'+Math.round(r)+' km').addTo(gImp)});
+ const lista=CIU.map(([n,la,lo,p])=>{const epi=dkm(e,{lat:la,lon:lo});return{n,p,epi,mmi:mmiA(e.mag,Math.hypot(epi,e.prof))}}).filter(c=>c.mmi>=3.5).sort((a,b)=>b.mmi-a.mmi||b.p-a.p).slice(0,6);
+ $('imp').innerHTML=`<small>M${e.mag.toFixed(1)} · ${e.lugar}</small>`+(lista.length?lista.map(c=>`<div class="ci"><b style="color:${CMMI(Math.round(c.mmi))}">${ROM[Math.min(10,Math.round(c.mmi))]}</b> ${c.n}<small> · ${Math.round(c.epi)} km · ≈${fmtp(c.p)} hab.</small></div>`).join(''):'<small>Ninguna ciudad principal con intensidad estimada ≥ IV.</small>');
+ return lista}
+function alertar(g){const e=g.p,top=sel(e,false).slice(0,3),txt=top.length?top.map(c=>`${c.n} (${ROM[Math.round(c.mmi)]})`).join(', '):'ninguna ciudad principal con intensidad ≥ IV';
+ const b=$('alerta');b.innerHTML=`<b>Sismo M${e.mag.toFixed(1)}</b> · ${e.lugar} · ${cot(e.ts).slice(11)} (hora Colombia)<br><small>Zonas más expuestas (estimado): ${txt}. Confirmar con fuentes oficiales (UNGRD).</small><button onclick="this.parentNode.hidden=true">×</button>`;b.hidden=false;
+ if('Notification' in window&&Notification.permission==='granted')new Notification('Sismo M'+e.mag.toFixed(1),{body:e.lugar+'. Zonas más expuestas: '+txt})}
+function revisarAlertas(G){const um=+$('malerta').value;
+ G.forEach(g=>{if(g.p.mag<um||ALERTAS.some(a=>Math.abs(a.t-g.t)<=3e5&&dkm(a.p,g.p)<=150))return;ALERTAS.push({t:g.t,p:g.p});if(iniciado)alertar(g)});
+ iniciado=true;
+ if(!manual||!SEL){const u=[...G].reverse().find(g=>g.p.mag>=um);if(u&&(!SEL||SEL.id!==u.p.id))sel(u.p,false)}}
+const cot=s=>new Date(Date.parse(s+'Z')-18e6).toISOString().slice(0,16).replace('T',' '), med=a=>a.length?[...a].sort((x,y)=>x-y)[a.length>>1]:null, tms=s=>Date.parse(s+'Z');
+function latencia(G){
+ const S={USGS:{},EMSC:{}};Object.values(S).forEach(o=>Object.assign(o,{n:0,ret:[],primero:0,dm:[]}));
+ evs.filter(e=>e.en_vivo&&e.recibido&&S[e.fuente]).forEach(e=>{S[e.fuente].n++;S[e.fuente].ret.push((tms(e.recibido)-tms(e.ts))/6e4)});
+ const multi=G.filter(g=>g.todos.length>=2&&g.todos.every(o=>o.en_vivo&&o.recibido));
+ multi.forEach(g=>{const o=[...g.todos].sort((a,b)=>tms(a.recibido)-tms(b.recibido));S[o[0].fuente].primero++;const ref=g.todos.find(x=>x.fuente=='USGS')||g.todos[0];g.todos.forEach(x=>{if(x!==ref&&S[x.fuente])S[x.fuente].dm.push(x.mag-ref.mag)})});
+ const f=(v,d=1)=>v==null?'–':v.toFixed(d);
+ $('lat').innerHTML=`<table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:var(--mut);text-align:left"><th>Red</th><th>Sismos</th><th>Retraso med.</th><th>Primero</th><th>Δmag*</th></tr>`+
+  Object.entries(S).map(([k,v])=>`<tr><td style="color:${FCOL[k]}">● ${k}</td><td>${v.n}</td><td>${v.n?f(med(v.ret),0)+' min':'–'}</td><td>${v.primero}</td><td>${f(v.dm.length?v.dm.reduce((a,b)=>a+b,0)/v.dm.length:null,2)}</td></tr>`).join('')+
+  `</table><small style="color:var(--mut)">${multi.length} sismos en vivo con 2+ redes. *Δmag respecto a USGS</small>`}
+function descargar(){const c=['fuente,id,origen_utc,recibido_utc,retraso_min,lat,lon,prof_km,mag,tipo_mag,zona,en_vivo,lugar'];
+ evs.forEach(e=>c.push([e.fuente,e.id,e.ts,e.recibido||'',e.recibido?((tms(e.recibido)-tms(e.ts))/6e4).toFixed(1):'',e.lat,e.lon,e.prof,e.mag,e.tipo_mag||'',e.zona,e.en_vivo?1:0,'"'+(e.lugar||'').replace(/"/g,"'")+'"'].join(',')));
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c.join('\n')],{type:'text/csv'}));a.download='sismos_catalogos.csv';a.click()}
+function hero(g){const e=g.p,mn=Math.round((Date.now()-Date.parse(e.ts+'Z'))/6e4),t=mn<90?mn+' min':mn<2880?Math.round(mn/60)+' h':Math.round(mn/1440)+' d',el=$('hero');
+ el.style.borderLeftColor=MC(e.mag);
+ el.innerHTML=`<div class="m" style="color:${MC(e.mag)}">${e.mag.toFixed(1)}</div><div class="t"><b>${e.lugar}</b><br><span>hace ${t} · ${cot(e.ts).slice(11)} h Col. · ${e.prof.toFixed(0)} km · ${g.todos.map(o=>o.fuente).join(' + ')}</span></div>`;
+ el.onclick=()=>irA(e.id,e.lat,e.lon)}
+function dibujar(){
+  const mmin=+$('mmin').value; gSis.clearLayers(); marks={};
+  const G=fusionar(evs.filter(e=>e.mag>=mmin)); FUS=G.map(g=>g.p); revisarAlertas(G); latencia(G);
+  G.forEach(g=>{const e=g.p,m=L.circleMarker([e.lat,e.lon],{radius:3+e.mag*2.2,fillColor:COL(e.prof),fillOpacity:.65,color:FCOL[e.fuente]||'#fff',weight:g.todos.length>1?3:1.2})
+    .bindPopup(`<b>M${e.mag.toFixed(1)}</b> · ${e.lugar}<br>${cot(e.ts)} (hora Colombia) · Zona: ${e.zona}<br>`+g.todos.map(o=>`<span style="color:${FCOL[o.fuente]}">●</span> ${o.fuente}: M${o.mag.toFixed(1)} ${o.tipo_mag||''} · ${o.prof.toFixed(0)} km`).join('<br>')+(g.todos.length>1?`<br>Confirmado por ${g.todos.length} redes`:'')).on('click',()=>sel(e,true)).addTo(gSis); marks[e.id]=m;});
+  const U=G[G.length-1]; if(U){L.marker([U.p.lat,U.p.lon],{icon:L.divIcon({className:'',html:'<div class="ultimo"></div>',iconSize:[18,18]}),interactive:false,zIndexOffset:-100}).addTo(gSis); hero(U)}
+  $('k1').textContent=G.length; $('k2').textContent=G.length?Math.max(...FUS.map(e=>e.mag)).toFixed(1):'–'; $('k3').textContent=G.filter(g=>g.todos.length>1).length; barras(FUS); actividad(FUS);
+  $('feed').innerHTML=G.slice(-14).reverse().map(g=>{const e=g.p;return `<div class="ev" onclick="irA('${e.id}',${e.lat},${e.lon})"><div class="mg" style="background:${MC(e.mag)}">${e.mag.toFixed(1)}</div>
+   <div>${e.lugar}<br><small>${cot(e.ts).slice(5)} h Col. · ${e.prof.toFixed(0)} km · ${g.todos.map(o=>o.fuente).join('+')}</small>${g.todos.length>1?' <span class="chip ok">confirmado</span>':''}</div></div>`}).join('')||'<small>Sin sismos con ese filtro.</small>';
+}
+function irA(id,la,lo){const ev=FUS.find(x=>x.id==id);if(ev)sel(ev,true);map.flyTo([la,lo],9);marks[id]&&marks[id].openPopup()}
+function pulso(e){L.marker([e.lat,e.lon],{icon:L.divIcon({className:'',html:'<div class="pulse"></div>',iconSize:[14,14]}),interactive:false}).addTo(map);}
+function barras(v){const c=$('cv'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
+ const dias=[];for(let i=6;i>=0;i--)dias.push(new Date(Date.now()-18e6-i*864e5).toISOString().slice(0,10));
+ const F=['USGS','EMSC'],n=dias.map(d=>F.map(f=>v.filter(e=>cot(e.ts).slice(0,10)==d&&e.fuente==f).length));
+ const mx=Math.max(...n.map(a=>a[0]+a[1]),1),w=c.width/7;
+ n.forEach((a,i)=>{let base=90;a.forEach((k,j)=>{const hh=k/mx*70;x.fillStyle=FCOL[F[j]];x.fillRect(i*w+4,base-hh,w-8,hh);base-=hh});
+  x.fillStyle='#8aa0c2';x.font='10px sans-serif';x.fillText(dias[i].slice(5),i*w+6,105);const t=a[0]+a[1];if(t)x.fillText(t,i*w+w/2-4,base-4)});}
+const LATIDO=[[-9,0],[-7,.1],[-5,0],[-2,0],[-1,-.18],[0,1],[1,-.4],[2,0],[5,0],[7,.16],[9,0]];
+function latido(dx){if(dx<=-9||dx>=9)return 0;for(let i=1;i<LATIDO.length;i++){const[a,ya]=LATIDO[i-1],[b,yb]=LATIDO[i];if(dx<=b)return ya+(yb-ya)*(dx-a)/(b-a)}return 0}
+function ecg(){
+ const c=$('ecg'),x=c.getContext('2d'),W=c.width,H=c.height,mid=H*.68,now=Date.now(),span=+$('ecgh').value*36e5,t0=now-span,mm=+$('mmin').value;
+ const y=new Float32Array(W);
+ for(let i=0;i<W;i++)y[i]=Math.sin(i*1.9+now/650)*.7+Math.sin(i*.37-now/1900)*.5;
+ let ult=null;
+ FUS.forEach(e=>{if(e.mag<mm)return;const t=Date.parse(e.ts+'Z');if(t<t0||t>now)return;const px=Math.round((t-t0)/span*(W-1)),a=Math.min(1,Math.max(.12,(e.mag-1.5)/4))*(mid-8);
+  for(let d=-9;d<=9;d++){const k=px+d;if(k>=0&&k<W)y[k]-=latido(d)*a}if(!ult||t>ult.t)ult={t,e}});
+ x.clearRect(0,0,W,H);x.strokeStyle='#16233f';x.lineWidth=1;
+ for(let i=0;i<=W;i+=W/12){x.beginPath();x.moveTo(i,0);x.lineTo(i,H);x.stroke()}
+ for(let j=0;j<=H;j+=H/4){x.beginPath();x.moveTo(0,j);x.lineTo(W,j);x.stroke()}
+ const barrido=(now/50)%W;
+ x.lineWidth=1.6;x.lineJoin='round';
+ for(let i=1;i<W;i++){const dist=(barrido-i+W)%W,al=dist<70?1-dist/90:.35;x.strokeStyle=`rgba(46,229,157,${al})`;x.beginPath();x.moveTo(i-1,mid+y[i-1]);x.lineTo(i,mid+y[i]);x.stroke()}
+ x.fillStyle='#8aa0c2';x.font='9px sans-serif';x.fillText('hace '+(span/36e5>=48?Math.round(span/864e5)+' d':span/36e5+' h'),2,H-2);x.fillText('ahora',W-30,H-2);
+ $('ult').textContent=ult?`Último latido: M${ult.e.mag.toFixed(1)} · hace ${dur(now-ult.t)}`:'Sin sismos en esta ventana';
+}
+function dur(ms){const m=Math.round(ms/6e4);return m<90?m+' min':m<2880?Math.round(m/60)+' h':Math.round(m/1440)+' d'}
+function actividad(v){
+ const now=Date.now(),h24=v.filter(e=>now-Date.parse(e.ts+'Z')<864e5).length,prev=v.filter(e=>{const a=now-Date.parse(e.ts+'Z');return a>=864e5&&a<7*864e5}).length/6;
+ let txt;if(prev<.5)txt='sin línea base suficiente';else{const r=h24/prev;txt=`${r.toFixed(1)}× lo habitual · `+(r>3?'<b style="color:#ff4d4d">Alta</b>':r>1.5?'<b style="color:#ffb703">Elevada</b>':'<b style="color:#2ee59d">Normal</b>')}
+ $('act').innerHTML=`Actividad 24 h: <b>${h24}</b> sismos · ${txt}`;
+}
+setInterval(ecg,100);
+
+let ms=15000,cuenta=0,timer;
+async function poll(){
+  try{const r=await (await fetch('/api/estado?e='+desde)).json(); desde=r.e;
+   r.eventos.forEach(e=>{evs.push(e); if(evs.length>1&&desde>0&&!first)pulso(e)}); first=false; evs=evs.slice(-1500);
+   const m=r.metricas||{}; $('k4').textContent=m.actualizado||'–'; dibujar();
+   $('estado').textContent='En vivo'; }catch(e){$('estado').textContent='sin conexión con el servidor'}
+  cuenta=ms/1000;
+}
+let first=true;
+function reiniciar(){ms=$('int').value*1000;clearInterval(timer);poll();timer=setInterval(()=>{cuenta--;if(cuenta<=0)poll();else if($('estado').textContent.startsWith('En vivo'))$('estado').textContent='En vivo · próxima en '+cuenta+' s'},1000)}
+$('int').onchange=reiniciar;$('mmin').onchange=dibujar;reiniciar();
+</script></body></html>

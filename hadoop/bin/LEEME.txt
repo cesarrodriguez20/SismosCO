@@ -1,0 +1,2 @@
+Aquí van winutils.exe y hadoop.dll (Spark los necesita en Windows).
+Se descargan solos al ejecutar:  python verificar.py   o   python moderador_spark.py

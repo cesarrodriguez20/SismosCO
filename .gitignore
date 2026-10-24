@@ -1,0 +1,6 @@
+data/
+__pycache__/
+*.pyc
+.vscode/
+hadoop/bin/*.exe
+hadoop/bin/*.dll
